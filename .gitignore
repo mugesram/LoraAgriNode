@@ -1,0 +1,15 @@
+# tool installs and build output
+.venv/
+__pycache__/
+*.pyc
+gateway/.pio/
+code/build*/
+
+# raw scope captures (20 MB each); the reduced CSVs and screenshots are kept
+results/**/*.bin
+
+# vendor PDFs, not redistributed here
+datasheets/
+
+# server runtime data (database and log)
+server/data/

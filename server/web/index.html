@@ -1,0 +1,1038 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>entc-sensornode-1 · LoRa Sensor Logger</title>
+<script>
+  /* theme before first paint: saved choice, else the system setting */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('theme'); } catch (e) {}
+    var q = /[?&]theme=(light|dark)/.exec(location.search);
+    if (q) t = q[1];
+    if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.dataset.theme = t;
+  })();
+</script>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #f3f4f6; --surface: #fcfcfb; --surface-2: #f1f2f4; --line: #e1e3e8; --line-strong: #cdd1d8;
+    --text: #0f1720; --text-2: #4a5361; --muted: #6b7482;
+    --accent: #2a78d6; --accent-ink: #ffffff; --accent-wash: rgba(42, 120, 214, .10);
+    --good: #0ca30c; --good-ink: #0a6b0a; --warning: #fab219; --warning-ink: #7a5200; --critical: #d03b3b; --critical-ink: #b02a2a;
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #4a3aa7; --s8: #e34948;
+    --shadow: 0 1px 2px rgba(15, 23, 32, .05), 0 4px 16px rgba(15, 23, 32, .04);
+    --radius: 12px;
+    --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #101214; --surface: #1a1a19; --surface-2: #232422; --line: #2e302d; --line-strong: #40423e;
+    --text: #f3f4f2; --text-2: #c3c2b7; --muted: #96978f;
+    --accent: #3987e5; --accent-ink: #ffffff; --accent-wash: rgba(57, 135, 229, .16);
+    --good-ink: #4fce4f; --warning-ink: #fab219; --critical-ink: #f08080;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --s7: #9085e9; --s8: #e66767;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 20px rgba(0, 0, 0, .25);
+  }
+  * { box-sizing: border-box; }
+  html { scrollbar-gutter: stable; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(1200px 420px at 12% -8%, var(--accent-wash), transparent 70%) no-repeat, var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  .hidden { display: none !important; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ------------------------------------------------------------ top bar */
+  .topbar { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--surface) 88%, transparent); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+  .topbar-in { max-width: 1240px; margin: 0 auto; padding: 10px 20px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+  .brand { display: flex; align-items: center; gap: 11px; margin-right: auto; }
+  .brand-mark { width: 34px; height: 34px; border-radius: 9px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; flex: none; }
+  .brand h1 { margin: 0; font: 600 15px/1.2 var(--mono); letter-spacing: -.01em; }
+  .brand p { margin: 0; font-size: 12px; color: var(--muted); }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; padding: 4px 10px 4px 8px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--line); transition: color .3s, border-color .3s; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; position: relative; }
+  .pill.on .dot { background: var(--good); }
+  .pill.on .dot::after { content: ""; position: absolute; inset: 0; border-radius: 50%; background: var(--good); animation: ping 2.2s ease-out infinite; }
+  .pill.off .dot { background: var(--critical); }
+  .pill.on { color: var(--text); }
+  @keyframes ping { 0% { transform: scale(1); opacity: .55; } 80%, 100% { transform: scale(2.6); opacity: 0; } }
+  .clock { font: 12px var(--mono); color: var(--muted); min-width: 64px; text-align: right; }
+
+  .tabs { max-width: 1240px; margin: 0 auto; padding: 0 20px; display: flex; gap: 4px; }
+  .tab { appearance: none; border: 0; background: none; color: var(--muted); font: 500 14px var(--font); padding: 10px 14px; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; display: inline-flex; align-items: center; gap: 8px; transition: color .15s, border-color .15s; }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab .count { font: 500 11px var(--mono); padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); }
+
+  /* ------------------------------------------------------------- layout */
+  main { max-width: 1240px; margin: 0 auto; padding: 20px; display: grid; gap: 16px; animation: rise .28s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; min-width: 0; }
+  .card-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-bottom: 12px; }
+  .card-head h2 { margin: 0 auto 0 0; font-size: 14.5px; font-weight: 650; letter-spacing: -.005em; }
+  .card-head h2 small { font-weight: 400; color: var(--muted); margin-left: 8px; font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .stack { display: grid; gap: 16px; }
+  .scroll-x { overflow-x: auto; }
+  .muted { color: var(--muted); font-size: 12.5px; }
+  .hint { color: var(--muted); font-size: 12.5px; margin: 10px 0 0; }
+  code { font: 12px var(--mono); background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
+
+  /* ----------------------------------------------------------- controls */
+  button, select, input { font: inherit; color: var(--text); }
+  svg.i { width: 15px; height: 15px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .btn, select, input[type=number], input[type=datetime-local], input[type=file] { height: 36px; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 9px; padding: 0 12px; transition: border-color .15s, background .15s, box-shadow .15s, transform .12s; }
+  input[type=file] { padding: 5px 8px; height: auto; max-width: 100%; }
+  input[type=file]::file-selector-button { font: inherit; font-weight: 600; font-size: 12.5px; color: var(--text); background: var(--surface-2); border: 1px solid var(--line-strong); border-radius: 6px; padding: 3px 10px; margin-right: 10px; cursor: pointer; }
+  select { appearance: none; padding-right: 32px; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238a93a0' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 11px center; }
+  select:hover, input[type=number]:hover, input[type=datetime-local]:hover { border-color: var(--accent); }
+  select:focus, input[type=number]:focus, input[type=datetime-local]:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+  .btn { cursor: pointer; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; padding: 0 14px; box-shadow: 0 1px 2px rgba(15, 23, 32, .08), inset 0 1px 0 rgba(255, 255, 255, .08); user-select: none; }
+  a.btn { text-decoration: none; color: var(--text); }
+  .btn.icon-btn { width: 36px; padding: 0; }
+  .btn:hover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--surface)); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(15, 23, 32, .10); }
+  .btn:active { transform: translateY(0) scale(.98); box-shadow: 0 1px 2px rgba(15, 23, 32, .10); }
+  .btn:focus-visible, .tab:focus-visible, .chart:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .btn.primary { background: linear-gradient(180deg, #3b8bea, #2265c0); border-color: #1d59ab; color: #fff; box-shadow: 0 1px 2px rgba(29, 89, 171, .35), inset 0 1px 0 rgba(255, 255, 255, .22); }
+  .btn.primary:hover { background: linear-gradient(180deg, #4795f0, #2a70cf); border-color: #1d59ab; box-shadow: 0 5px 14px rgba(34, 101, 192, .35), inset 0 1px 0 rgba(255, 255, 255, .22); }
+  .btn.danger { color: var(--critical-ink); border-color: color-mix(in srgb, var(--critical) 45%, var(--line)); background: color-mix(in srgb, var(--critical) 6%, var(--surface)); }
+  .btn.danger:hover { background: var(--critical); border-color: var(--critical); color: #fff; box-shadow: 0 5px 14px color-mix(in srgb, var(--critical) 35%, transparent); }
+  .btn.small { height: 30px; padding: 0 11px; font-size: 12.5px; border-radius: 8px; }
+  .btn[disabled] { opacity: .65; cursor: progress; transform: none; }
+  .btn.busy svg.i { display: none; }
+  .btn.busy::before { content: ""; width: 13px; height: 13px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  input[type=number] { width: 112px; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+  label { display: inline-flex; align-items: center; gap: 6px; color: var(--text-2); font-size: 13px; }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 2px; }
+  .seg button { appearance: none; border: 0; background: none; padding: 4px 11px; border-radius: 7px; cursor: pointer; color: var(--text-2); font-size: 13px; font-weight: 500; transition: background .15s, color .15s; }
+  .seg button:hover { color: var(--text); }
+  .seg button.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0, 0, 0, .12); }
+  .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+  .filters .spacer { margin-left: auto; }
+  .live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+  .live .dot { background: var(--good); }
+  .live.beat .dot { animation: beat .6s ease-out; }
+  @keyframes beat { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--good) 60%, transparent); } 100% { box-shadow: 0 0 0 9px transparent; } }
+
+  /* -------------------------------------------------------------- tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 12px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px 16px 12px; position: relative; overflow: hidden; min-width: 0; transition: border-color .4s; }
+  .tile.pulse { border-color: var(--accent); }
+  .tile .label { font-size: 12px; font-weight: 600; color: var(--text-2); display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .ic-chip { width: 24px; height: 24px; border-radius: 7px; background: var(--accent-wash); color: var(--accent); display: grid; place-items: center; flex: none; }
+  .ic-chip svg.i { width: 14px; height: 14px; }
+  .tile:hover { border-color: var(--line-strong); transform: translateY(-1px); }
+  .tile { transition: border-color .3s, transform .15s; }
+  .tile .value { font-size: 26px; font-weight: 650; letter-spacing: -.02em; line-height: 1.25; margin-top: 2px; white-space: nowrap; }
+  .tile .value .unit { font-size: 13px; font-weight: 500; color: var(--muted); margin-left: 4px; letter-spacing: 0; }
+  .tile .sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile canvas.spark { position: absolute; right: 14px; bottom: 34px; width: 64px; height: 24px; opacity: .9; }
+
+  /* -------------------------------------------------------------- chart */
+  .chart { position: relative; height: 300px; border-radius: 8px; cursor: crosshair; touch-action: pan-y; transition: opacity .2s; }
+  .chart.loading { opacity: .55; }
+  .chart canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .xhair { position: absolute; top: 0; width: 1px; background: var(--line-strong); pointer-events: none; display: none; }
+  .hdot { position: absolute; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; border: 2px solid var(--surface); pointer-events: none; display: none; }
+  .tip { position: absolute; top: 8px; pointer-events: none; display: none; background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: var(--shadow); padding: 8px 10px; font-size: 12px; min-width: 130px; z-index: 2; white-space: nowrap; }
+  .tip .when { color: var(--muted); margin-bottom: 4px; }
+  .tip .r { display: flex; align-items: center; gap: 7px; }
+  .tip .key, .legend .key { width: 12px; height: 2px; border-radius: 1px; flex: none; }
+  .tip b { font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tip .nm { color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-2); margin-bottom: 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+
+  /* ------------------------------------------------------------- tables */
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 14px 7px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr { transition: background .15s; }
+  tbody tr:hover { background: var(--surface-2); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.fresh { animation: fresh 2.4s ease-out; }
+  @keyframes fresh { 0% { background: var(--accent-wash); } 100% { background: transparent; } }
+  .tag { font: 500 11px var(--mono); padding: 1px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--line); }
+  .bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 12px; margin-right: 6px; vertical-align: -1px; }
+  .bars i { width: 3px; background: var(--line-strong); border-radius: 1px; }
+  .bars i.f { background: var(--text-2); }
+  .empty { text-align: center; padding: 26px 10px; color: var(--muted); }
+
+  /* ---------------------------------------------------------- USB page */
+  .hero { background: linear-gradient(120deg, var(--accent-wash), transparent 55%), var(--surface); display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; }
+  .hero .ident { margin-right: auto; }
+  .hero .ident h2 { margin: 0; font: 600 20px/1.2 var(--mono); letter-spacing: -.01em; }
+  .hero .ident p { margin: 3px 0 0; color: var(--muted); font-size: 12.5px; }
+  .hero .actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+  .status .ic { width: 16px; height: 16px; border-radius: 50%; display: grid; place-items: center; font-size: 10px; font-weight: 700; color: #fff; flex: none; }
+  .status.good .ic { background: var(--good); } .status.good { color: var(--good-ink); }
+  .status.warn .ic { background: var(--warning); color: #3a2800; } .status.warn { color: var(--warning-ink); }
+  .status.bad .ic { background: var(--critical); } .status.bad { color: var(--critical-ink); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 7px 18px; font-size: 13px; }
+  .kv > span:nth-child(odd) { color: var(--muted); }
+  .kv > span:nth-child(even) { font-variant-numeric: tabular-nums; min-width: 0; }
+  .meter { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; margin: 8px 0 6px; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .6s ease; }
+  .wait { display: grid; place-items: center; gap: 10px; padding: 46px 20px; text-align: center; color: var(--muted); }
+  .wait .ring { width: 44px; height: 44px; border-radius: 50%; border: 3px solid var(--line); border-top-color: var(--accent); animation: spin 1.1s linear infinite; }
+  .wait b { color: var(--text); font-size: 15px; font-weight: 600; }
+  .big { font-size: 30px; font-weight: 700; letter-spacing: -.02em; margin: 4px 0 0; line-height: 1.2; }
+  .big small { display: block; font-size: 13px; font-weight: 500; color: var(--muted); letter-spacing: 0; margin-top: 2px; }
+  .fields { display: grid; }
+  .field { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 14px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .field:last-child { border-bottom: 0; }
+  .field .name { font-weight: 550; font-size: 13.5px; color: var(--text); }
+  .field .name small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+  .field .ctl { display: flex; align-items: center; gap: 8px; }
+  .field .ctl input[type=number] { width: 104px; text-align: right; }
+  .field .ctl select { min-width: 210px; }
+  .field .ctl .unit { width: 30px; font-size: 12px; color: var(--muted); }
+  @media (max-width: 520px) { .field { grid-template-columns: 1fr; } .field .ctl select { min-width: 0; flex: 1; } }
+  details.adv { border-top: 1px solid var(--line); margin-top: 4px; }
+  details.adv > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 12px 0; font-weight: 600; font-size: 13.5px; color: var(--text-2); border-radius: 6px; }
+  details.adv > summary::-webkit-details-marker { display: none; }
+  details.adv > summary:hover { color: var(--accent); }
+  details.adv > summary svg.i { transition: transform .2s; }
+  details.adv[open] > summary svg.i { transform: rotate(90deg); }
+  details.adv > summary small { font-weight: 400; color: var(--muted); font-size: 12px; margin-left: 4px; }
+  details.adv[open] > summary { border-bottom: 1px solid var(--line); }
+  details.adv > .inner { padding-top: 4px; animation: rise .2s ease-out; }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .fact { background: var(--surface-2); border: 1px solid var(--line); border-radius: 9px; padding: 7px 12px; font-size: 12px; color: var(--muted); }
+  .fact b { display: block; font-size: 14px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; }
+  pre.log { margin: 10px 0 0; font: 12px/1.5 var(--mono); white-space: pre-wrap; color: var(--text-2); background: var(--surface-2); border-radius: 8px; padding: 10px 12px; max-height: 220px; overflow: auto; }
+  pre.log:empty { display: none; }
+
+  /* -------------------------------------------------------------- toast */
+  #toasts { position: fixed; right: 18px; bottom: 18px; display: grid; gap: 8px; z-index: 50; }
+  .toast { background: var(--surface); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); border-radius: 9px; box-shadow: var(--shadow); padding: 9px 14px; font-size: 13px; max-width: 360px; animation: toast-in .22s ease-out; transition: opacity .3s, transform .3s; }
+  .toast.good { border-left-color: var(--good); } .toast.bad { border-left-color: var(--critical); }
+  .toast.out { opacity: 0; transform: translateX(12px); }
+  @keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+  @media (max-width: 640px) { main { padding: 14px; } .topbar-in, .tabs { padding-left: 14px; padding-right: 14px; } .clock { display: none; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></symbol>
+  <symbol id="i-pulse" viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0l-4-4m4 4l4-4M5 20h14"/></symbol>
+  <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 20V9m0 0l-4 4m4-4l4 4M5 4h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-drop" viewBox="0 0 24 24"><path d="M12 3s6 6.2 6 11a6 6 0 0 1-12 0c0-4.800 6-11 6-11z"/></symbol>
+  <symbol id="i-thermo" viewBox="0 0 24 24"><path d="M10 13.500V5a2 2 0 0 1 4 0v8.500a4 4 0 1 1-4 0z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3L5 14h6l-1 7 8-11h-6z"/></symbol>
+  <symbol id="i-signal" viewBox="0 0 24 24"><path d="M4 20v-3M9 20v-7M14 20V9M19 20V4"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.700 3.100 3 7 3s7-1.300 7-3V6M5 12v6c0 1.700 3.100 3 7 3s7-1.300 7-3v-6"/></symbol>
+  <symbol id="i-chip" viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.500"/><path d="M10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4"/></symbol>
+  <symbol id="i-radio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1.500"/><path d="M7.800 16.200a6 6 0 0 1 0-8.400M16.200 7.800a6 6 0 0 1 0 8.400M4.900 19.100a10 10 0 0 1 0-14.200M19.100 4.900a10 10 0 0 1 0 14.200"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-reply" viewBox="0 0 24 24"><path d="M9 7l-5 5 5 5M4 12h10a6 6 0 0 1 6 6"/></symbol>
+</defs></svg>
+<div class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none"/><path d="M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2"/></svg>
+      </div>
+      <div><h1>entc-sensornode-1</h1><p>LoRa Sensor Logger</p></div>
+    </div>
+    <div class="pills">
+      <span id="pillSrv" class="pill"><i class="dot"></i><span>Server</span></span>
+      <span id="pillGw" class="pill"><i class="dot"></i><span>Gateway</span></span>
+      <span id="pillNode" class="pill"><i class="dot"></i><span>Node on USB</span></span>
+    </div>
+    <span id="clock" class="clock"></span>
+    <button id="btnTheme" class="btn icon-btn" title="Light / dark" aria-label="Switch between light and dark">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+    </button>
+  </div>
+  <div class="tabs" role="tablist">
+    <button id="tabLora" class="tab active" role="tab">Live data <span id="tabLoraCount" class="count">–</span></button>
+    <button id="tabUsb" class="tab" role="tab">Node on USB</button>
+  </div>
+</div>
+
+<!-- ================================================================ LoRa -->
+<main id="pageLora">
+  <div class="filters">
+    <div id="loraRange" class="seg" role="group" aria-label="Time range">
+      <button data-v="3600">1 h</button><button data-v="86400">24 h</button><button data-v="604800">7 d</button><button data-v="2592000">30 d</button><button data-v="0">All</button>
+    </div>
+    <select id="loraDev" aria-label="Node"></select>
+    <span id="liveMark" class="live spacer"><i class="dot"></i><span id="liveText">waiting for data</span></span>
+    <a id="loraCsv" class="btn" href="/api/export.csv"><svg class="i"><use href="#i-download"/></svg>Download CSV</a>
+  </div>
+
+  <div class="tiles">
+    <div class="tile" id="tMoist"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-drop"/></svg></span>Moisture</div><canvas class="spark"></canvas><div class="value num"><span class="v">–</span><span class="unit">mV</span></div><div class="sub">–</div></div>
+    <div class="tile" id="tTemp"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-thermo"/></svg></span>Temperature</div><canvas class="spark"></canvas><div class="value num"><span class="v">–</span><span class="unit">°C</span></div><div class="sub">–</div></div>
+    <div class="tile" id="tVdd"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-bolt"/></svg></span>Supply</div><canvas class="spark"></canvas><div class="value num"><span class="v">–</span><span class="unit">mV</span></div><div class="sub">–</div></div>
+    <div class="tile" id="tSig"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-signal"/></svg></span>Signal</div><div class="value num"><span class="v">–</span><span class="unit">dBm</span></div><div class="sub">–</div></div>
+    <div class="tile" id="tSeen"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-clock"/></svg></span>Last heard</div><div class="value num"><span class="v">–</span></div><div class="sub">–</div></div>
+    <div class="tile" id="tCount"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-db"/></svg></span>Readings in range</div><div class="value num"><span class="v">–</span></div><div class="sub">–</div></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2 id="loraTitle">Moisture <small id="loraInfo"></small></h2>
+      <div id="loraField" class="seg" role="group" aria-label="Measurement">
+        <button data-v="moisture_mV">Moisture</button><button data-v="temp_c">Temperature</button><button data-v="vdda_mV">Supply</button>
+      </div>
+    </div>
+    <div id="loraLegend" class="legend hidden"></div>
+    <div id="loraChart" class="chart" tabindex="0" aria-label="Readings over time. Use the left and right arrow keys to read values."><canvas></canvas><div class="xhair"></div><div class="tip"></div></div>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <div class="card-head"><h2>Nodes heard over LoRa</h2></div>
+      <div class="scroll-x">
+        <table id="devTable"><thead><tr><th>Node</th><th>Last heard</th><th class="num">Stored</th><th class="num">Still on node</th><th>Signal</th><th class="num">SNR dB</th></tr></thead><tbody></tbody></table>
+        <div id="devEmpty" class="empty">Nothing received yet. A node sends on its own supply, not while it is on USB.</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Gateway</h2></div>
+      <div id="gwKv" class="kv"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Latest readings <small>newest first</small></h2></div>
+    <div class="scroll-x">
+      <table id="loraTable"><thead><tr><th>Time</th><th class="num">Node</th><th class="num">Seq</th><th class="num">Moisture mV</th><th class="num">Temp °C</th><th class="num">Supply mV</th><th class="num">RSSI dBm</th><th>Via</th></tr></thead><tbody></tbody></table>
+      <div id="loraEmpty" class="empty hidden">No readings in this range.</div>
+    </div>
+  </div>
+</main>
+
+<!-- ================================================================= USB -->
+<main id="pageUsb" class="hidden">
+  <div id="usbNone" class="card wait">
+    <div class="ring"></div>
+    <b>Looking for a node on USB</b>
+    <span>Plug in <code>entc-sensornode-1</code>. It appears here within a few seconds.</span>
+  </div>
+
+  <div id="usbAll" class="stack hidden">
+    <div class="card hero">
+      <div class="ident">
+        <h2 id="heroName">entc-sensornode-1</h2>
+        <p id="heroSub">–</p>
+      </div>
+      <span id="usbLive" class="live"><i class="dot"></i><span>status updates every 5 s</span></span>
+      <div class="actions">
+        <button id="btnTime" class="btn"><svg class="i"><use href="#i-clock"/></svg>Set time from this PC</button>
+        <button id="btnRefresh" class="btn primary"><svg class="i"><use href="#i-refresh"/></svg>Refresh</button>
+      </div>
+    </div>
+
+    <div class="tiles">
+      <div class="tile"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-chip"/></svg></span>Flash chip</div><div class="value" style="font-size:18px" id="hFlash">–</div><div class="sub" id="hFlashSub">–</div></div>
+      <div class="tile"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-radio"/></svg></span>Radio chip</div><div class="value" style="font-size:18px" id="hRadio">–</div><div class="sub" id="hRadioSub">–</div></div>
+      <div class="tile"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-clock"/></svg></span>Clock</div><div class="value" style="font-size:18px" id="hClock">–</div><div class="sub" id="hClockSub">–</div></div>
+      <div class="tile"><div class="label"><span class="ic-chip"><svg class="i"><use href="#i-send"/></svg></span>Not yet sent</div><div class="value num"><span id="hUnsent">–</span><span class="unit">readings</span></div><div class="sub" id="hUnsentSub">–</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><h2>Storage and status</h2></div>
+        <div class="muted" id="memText">–</div>
+        <div class="meter"><i id="memBar"></i></div>
+        <div id="statusKv" class="kv" style="margin-top:14px"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Sensor check</h2><button id="btnSensor" class="btn"><svg class="i"><use href="#i-pulse"/></svg>Read sensor now</button><button id="btnCycle" class="btn primary"><svg class="i"><use href="#i-play"/></svg>Run one cycle</button></div>
+        <div id="sensorKv" class="kv"><span class="muted" style="grid-column:1/-1">Press “Read sensor now” to power the sensor and take one reading.</span></div>
+        <p class="hint">The node does not collect on its own while it is on USB. “Run one cycle” takes one reading, saves it and sends over LoRa.</p>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><h2>Settings</h2></div>
+        <div id="cfgCard">
+          <div id="cfgMain" class="fields"></div>
+          <details class="adv">
+            <summary><svg class="i"><use href="#i-chev"/></svg>Advanced <small>fixed values: change only when needed</small></summary>
+            <div id="cfgAdv" class="fields inner"></div>
+          </details>
+        </div>
+        <p class="hint">Each setting is saved in the node when you press Save.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Estimated run time on a full charge</h2></div>
+        <p class="big num" id="pwResult">–</p>
+        <div id="pwFacts" class="facts"></div>
+        <details class="adv" style="margin-top:14px">
+          <summary><svg class="i"><use href="#i-chev"/></svg>Parameters <small>battery, sleep current and current of each part</small></summary>
+          <div class="inner">
+            <div class="filters" style="margin:10px 0"><label>Battery mAh <input id="pwCap" type="number" value="2000"></label><label>Sleep µA <input id="pwSleep" type="number" value="10"></label></div>
+            <div class="scroll-x"><table id="pwTable"><thead><tr><th>While…</th><th class="num">Current mA</th><th class="num">Time ms</th><th class="num">Charge µAh</th></tr></thead><tbody></tbody></table></div>
+            <p class="hint">Times come from the node's last cycle. The currents are starting guesses from the datasheets: replace them with your measured values (they are remembered in this browser).</p>
+          </div>
+        </details>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <h2>Data stored on the node <small id="usbDataInfo">leave the dates empty to read everything</small></h2>
+      </div>
+      <div class="filters" style="margin-bottom:12px">
+        <label>From <input id="dFrom" type="datetime-local"></label>
+        <label>To <input id="dTo" type="datetime-local"></label>
+        <div id="dField" class="seg" role="group" aria-label="Measurement">
+          <button data-v="moisture_mV">Moisture</button><button data-v="temp_c">Temperature</button><button data-v="vdda_mV">Supply</button>
+        </div>
+        <label><input id="dSave" type="checkbox" checked> save to the server database</label>
+        <span class="spacer"></span>
+        <button id="btnData" class="btn primary"><svg class="i"><use href="#i-db"/></svg>Read from node</button><button id="btnDataCsv" class="btn"><svg class="i"><use href="#i-download"/></svg>Download CSV</button>
+      </div>
+      <div id="usbChart" class="chart" tabindex="0" aria-label="Stored readings over time. Use the left and right arrow keys to read values."><canvas></canvas><div class="xhair"></div><div class="tip"></div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="card-head"><h2>Delete data on the node</h2></div>
+        <div class="filters"><label>Older than <input id="delBefore" type="datetime-local"></label><button id="btnDelBefore" class="btn danger"><svg class="i"><use href="#i-trash"/></svg>Delete older</button><button id="btnDelAll" class="btn danger"><svg class="i"><use href="#i-trash"/></svg>Delete everything</button></div>
+        <p class="hint">Readings already saved in the server database are kept.</p>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Firmware update</h2></div>
+        <div class="filters"><input id="fwFile" type="file" accept=".bin"><button id="btnFw" class="btn primary"><svg class="i"><use href="#i-upload"/></svg>Update firmware</button></div>
+        <p class="hint">Choose <code>code/build/logger.bin</code>. The node restarts in bootloader mode, is written and checked, then starts again. Stored data and settings are kept.</p>
+        <pre id="fwLog" class="log"></pre>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const api = async (path, body) => {
+  const opt = body === undefined ? {} : { method: 'POST', body: body instanceof Blob ? body : JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  return r.json();
+};
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmtTime = t => t ? new Date(t * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'medium' }) : '–';
+const ago = t => { if (!t) return '–'; const s = Math.max(0, Math.round(Date.now() / 1000 - t)); return s < 90 ? s + ' s ago' : s < 5400 ? Math.round(s / 60) + ' min ago' : s < 172800 ? Math.round(s / 3600) + ' h ago' : Math.round(s / 86400) + ' days ago'; };
+const val = v => v === null || v === undefined ? '–' : v;
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const store = { get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
+const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+function toast(text, kind) {
+  const t = document.createElement('div');
+  t.className = 'toast ' + (kind || '');
+  t.textContent = text;
+  $('toasts').appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 320); }, kind === 'bad' ? 6000 : 3200);
+}
+
+/* number that counts to its new value */
+function setNum(el, v, dec = 0) {
+  if (v === null || v === undefined || Number.isNaN(v)) { el._v = undefined; el.textContent = '–'; return; }
+  const from = el._v, show = x => { el.textContent = x.toLocaleString(undefined, { minimumFractionDigits: dec, maximumFractionDigits: dec }); };
+  el._v = v;
+  if (from === undefined || from === v || reduced) { show(v); return; }
+  const t0 = performance.now(), id = el._anim = Symbol();
+  const step = now => {
+    if (el._anim !== id) return;
+    const k = Math.min(1, (now - t0) / 450), e = 1 - (1 - k) ** 3;
+    show(from + (v - from) * e);
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/* segmented control: remembers its choice */
+function seg(id, def, onchange) {
+  const root = $(id), key = 'seg_' + id;
+  let cur = String(store.get(key, def));
+  if (![...root.children].some(b => b.dataset.v === cur)) cur = String(def);
+  const paint = () => [...root.children].forEach(b => b.classList.toggle('active', b.dataset.v === cur));
+  root.onclick = e => { const b = e.target.closest('button'); if (!b || b.dataset.v === cur) return; cur = b.dataset.v; store.set(key, cur); paint(); onchange(cur); };
+  paint();
+  return { get value() { return cur; } };
+}
+
+/* ------------------------------------------------------------ line chart */
+const FIELDS = { moisture_mV: { name: 'Moisture', unit: 'mV', dec: 0 }, temp_c: { name: 'Temperature', unit: '°C', dec: 2 }, vdda_mV: { name: 'Supply', unit: 'mV', dec: 0 } };
+
+function makeChart(root) {
+  const cv = root.querySelector('canvas'), hair = root.querySelector('.xhair'), tip = root.querySelector('.tip');
+  let series = [], unit = '', dec = 0, geo = null, dots = [], kbd = -1;
+
+  function ticks(lo, hi, n) {
+    const raw = (hi - lo) / n, mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag;
+    const step = (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag, out = [];
+    for (let v = Math.ceil(lo / step - 1e-9) * step; v <= hi + step * 1e-9; v += step) out.push(v);
+    return { step, out };
+  }
+  function hide() { hair.style.display = tip.style.display = 'none'; dots.forEach(d => d.style.display = 'none'); }
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1, w = root.clientWidth, h = root.clientHeight;
+    if (!w || !h) return;
+    cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+    const g = cv.getContext('2d');
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, w, h);
+    g.font = '12px ' + css('--font');
+    hide();
+    const muted = css('--muted'), line = css('--line'), surface = css('--surface');
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity, n = 0;
+    for (const s of series) for (const p of s.pts) { n++; if (p.x < x0) x0 = p.x; if (p.x > x1) x1 = p.x; if (p.y < y0) y0 = p.y; if (p.y > y1) y1 = p.y; }
+    if (!n) { geo = null; g.fillStyle = muted; g.textAlign = 'center'; g.fillText('No readings in this range', w / 2, h / 2); return; }
+    if (x1 === x0) { x0 -= 60; x1 += 60; }
+    const pad = (y1 - y0) * 0.12 || Math.max(1, Math.abs(y1) * 0.02);
+    y0 -= pad; y1 += pad;
+    const yt = ticks(y0, y1, Math.max(2, Math.floor(h / 62)));
+    const ydec = yt.step >= 1 ? 0 : Math.min(3, Math.ceil(-Math.log10(yt.step)));
+    const L = 14 + Math.max(...yt.out.map(v => g.measureText(v.toFixed(ydec)).width)), R = 16, T = 20, B = 28;
+    const X = x => L + (x - x0) / (x1 - x0) * (w - L - R), Y = y => h - B - (y - y0) / (y1 - y0) * (h - T - B);
+    geo = { X, Y, L, R, T, B, w, h, x0, x1 };
+
+    g.lineWidth = 1; g.strokeStyle = line; g.fillStyle = muted; g.textAlign = 'right'; g.textBaseline = 'middle';
+    for (const v of yt.out) {
+      const y = Math.round(Y(v)) + .5;
+      g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
+      g.fillText(v.toFixed(ydec), L - 8, y);
+    }
+    g.textAlign = 'left'; g.textBaseline = 'alphabetic'; g.fillText(unit, 0, 11);
+    const span = x1 - x0, nx = Math.max(1, Math.min(7, Math.floor((w - L - R) / 120)));
+    g.textBaseline = 'alphabetic';
+    for (let i = 0; i <= nx; i++) {
+      const x = x0 + span * i / nx, d = new Date(x * 1000);
+      const label = span > 172800 ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        : span > 600 ? d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : d.toLocaleTimeString();
+      g.textAlign = i === 0 ? 'left' : i === nx ? 'right' : 'center';
+      g.fillText(label, X(x), h - 8);
+    }
+
+    for (const s of series) {
+      if (!s.pts.length) continue;
+      const col = css(s.color);
+      const runs = splitAtGaps(s.pts);       /* no line across a time with no data */
+      if (series.length === 1) {              /* soft fill under a single line */
+        const grad = g.createLinearGradient(0, T, 0, h - B);
+        grad.addColorStop(0, col + '2e'); grad.addColorStop(1, col + '00');
+        g.fillStyle = grad;
+        for (const run of runs) {
+          if (run.length < 2) continue;
+          g.beginPath();
+          run.forEach((p, i) => i ? g.lineTo(X(p.x), Y(p.y)) : g.moveTo(X(p.x), Y(p.y)));
+          g.lineTo(X(run[run.length - 1].x), h - B); g.lineTo(X(run[0].x), h - B); g.closePath();
+          g.fill();
+        }
+      }
+      g.strokeStyle = col; g.lineWidth = 2; g.lineJoin = g.lineCap = 'round';
+      g.beginPath();
+      for (const run of runs) run.forEach((p, i) => i ? g.lineTo(X(p.x), Y(p.y)) : g.moveTo(X(p.x), Y(p.y)));
+      g.stroke();
+      g.fillStyle = col;                      /* a reading with no neighbour still shows */
+      for (const run of runs) if (run.length === 1) { g.beginPath(); g.arc(X(run[0].x), Y(run[0].y), 2, 0, 6.3); g.fill(); }
+      const marks = s.pts.length <= 60 ? s.pts : [s.pts[s.pts.length - 1]];   /* few points: show each; else only the newest */
+      for (const p of marks) {
+        g.beginPath(); g.arc(X(p.x), Y(p.y), 4, 0, 6.3);
+        g.fillStyle = col; g.fill(); g.lineWidth = 2; g.strokeStyle = surface; g.stroke();
+      }
+    }
+  }
+
+  function splitAtGaps(pts) {
+    if (pts.length < 3) return [pts];
+    const dts = [];
+    for (let i = 1; i < pts.length; i++) dts.push(pts[i].x - pts[i - 1].x);
+    const limit = Math.max(1, [...dts].sort((a, b) => a - b)[dts.length >> 1]) * 6, runs = [[pts[0]]];
+    for (let i = 1; i < pts.length; i++) { if (dts[i - 1] > limit) runs.push([]); runs[runs.length - 1].push(pts[i]); }
+    return runs;
+  }
+  function nearest(pts, x) {
+    let lo = 0, hi = pts.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pts[m].x < x) lo = m; else hi = m; }
+    return Math.abs(pts[lo].x - x) <= Math.abs(pts[hi].x - x) ? lo : hi;
+  }
+  function hoverAt(px) {
+    if (!geo) return;
+    const { X, Y, L, R, T, B, w, h, x0, x1 } = geo;
+    const x = x0 + (Math.min(w - R, Math.max(L, px)) - L) / (w - L - R) * (x1 - x0);
+    let best = null;
+    const picks = series.map(s => {
+      if (!s.pts.length) return null;
+      const p = s.pts[nearest(s.pts, x)];
+      if (!best || Math.abs(p.x - x) < Math.abs(best.x - x)) best = p;
+      return p;
+    });
+    if (!best) return;
+    const hx = X(best.x);
+    hair.style.cssText = `display:block;left:${hx}px;top:${T}px;height:${h - T - B}px`;
+    while (dots.length < series.length) { const d = document.createElement('div'); d.className = 'hdot'; root.appendChild(d); dots.push(d); }
+    tip.textContent = '';
+    const when = document.createElement('div'); when.className = 'when'; when.textContent = fmtTime(best.x); tip.appendChild(when);
+    dots.forEach(d => d.style.display = 'none');
+    series.forEach((s, i) => {
+      const p = picks[i];
+      if (!p || Math.abs(X(p.x) - hx) > 24) return;       /* only series that have a point at this time */
+      const col = css(s.color);
+      dots[i].style.cssText = `display:block;left:${X(p.x)}px;top:${Y(p.y)}px;background:${col}`;
+      const r = document.createElement('div'); r.className = 'r';
+      const key = document.createElement('span'); key.className = 'key'; key.style.background = col;
+      const b = document.createElement('b'); b.textContent = p.y.toFixed(dec) + ' ' + unit;
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name;
+      r.append(key, b, nm); tip.appendChild(r);
+    });
+    tip.style.display = 'block';
+    const tw = tip.offsetWidth;
+    tip.style.left = (hx + 14 + tw > w ? hx - 14 - tw : hx + 14) + 'px';
+  }
+  root.addEventListener('pointermove', e => { kbd = -1; hoverAt(e.clientX - root.getBoundingClientRect().left); });
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('blur', hide);
+  root.addEventListener('keydown', e => {           /* same readout from the keyboard */
+    const s = series.find(q => q.pts.length);
+    if (!geo || !s || (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight')) return;
+    e.preventDefault();
+    kbd = kbd < 0 ? s.pts.length - 1 : Math.min(s.pts.length - 1, Math.max(0, kbd + (e.key === 'ArrowRight' ? 1 : -1)));
+    hoverAt(geo.X(s.pts[kbd].x));
+  });
+  return {
+    set(newSeries, f) { series = newSeries.map(s => ({ ...s, pts: s.pts.filter(p => p.y !== null && p.y !== undefined) })); unit = f.unit; dec = f.dec; kbd = -1; draw(); },
+    redraw: draw, loading(on) { root.classList.toggle('loading', on); },
+  };
+}
+
+function spark(canvas, values, colorVar) {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const v = values.filter(x => x !== null && x !== undefined);
+  if (v.length < 2) return;
+  let lo = Math.min(...v), hi = Math.max(...v);
+  if (hi === lo) { hi += 1; lo -= 1; }
+  g.strokeStyle = css(colorVar); g.lineWidth = 1.5; g.lineJoin = 'round';
+  g.beginPath();
+  v.forEach((y, i) => { const px = 2 + i / (v.length - 1) * (w - 4), py = h - 2 - (y - lo) / (hi - lo) * (h - 4); i ? g.lineTo(px, py) : g.moveTo(px, py); });
+  g.stroke();
+}
+
+/* the same node keeps the same colour, whatever the filter shows */
+const SLOTS = 8;
+function devColor(dev) {
+  const map = store.get('devColors', {});
+  if (!(dev in map)) { map[dev] = Object.keys(map).length + 1; store.set('devColors', map); }
+  return map[dev] <= SLOTS ? '--s' + map[dev] : '--muted';
+}
+
+/* ------------------------------------------------------------------ tabs */
+let tab = 'lora';
+function showTab(t) {
+  tab = t;
+  $('pageLora').classList.toggle('hidden', t !== 'lora');
+  $('pageUsb').classList.toggle('hidden', t !== 'usb');
+  $('tabLora').classList.toggle('active', t === 'lora');
+  $('tabUsb').classList.toggle('active', t === 'usb');
+  history.replaceState(null, '', t === 'usb' ? '#usb' : '#');
+  if (t === 'usb') { usbDraw(); usbRefresh(); } else { loraChart.redraw(); loraRefresh(); }
+}
+$('tabLora').onclick = () => showTab('lora');
+$('tabUsb').onclick = () => showTab('usb');
+
+$('btnTheme').onclick = () => {
+  const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem('theme', t); } catch (e) {}
+  redrawAll();
+};
+const pill = (id, state, text) => { $(id).className = 'pill ' + state; $(id).lastElementChild.textContent = text; };
+
+/* ------------------------------------------------------------- LoRa page */
+const loraChart = makeChart($('loraChart'));
+let nodePresent = false, loraRows = [], devices = [], seenKeys = null, serverOk = true;
+const rangeSeg = seg('loraRange', 86400, () => loraRefresh(true));
+const fieldSeg = seg('loraField', 'moisture_mV', () => loraRender());
+
+function signalBars(rssi) {
+  if (rssi === null || rssi === undefined) return '–';
+  const n = rssi > -70 ? 4 : rssi > -90 ? 3 : rssi > -105 ? 2 : 1;
+  return `<span class="bars" aria-hidden="true">${[4, 7, 10, 12].map((hh, i) => `<i class="${i < n ? 'f' : ''}" style="height:${hh}px"></i>`).join('')}</span><span class="num">${Math.round(rssi)} dBm</span>`;
+}
+
+async function pollGateway() {
+  let s;
+  try { s = await api('/api/gateway'); } catch (e) {
+    if (serverOk) toast('The server is not reachable. Start it with server/run.sh.', 'bad');
+    serverOk = false;
+    pill('pillSrv', 'off', 'Server not reachable'); pill('pillGw', '', 'Gateway'); pill('pillNode', '', 'Node on USB');
+    return;
+  }
+  if (!serverOk) toast('Server is back.', 'good');
+  serverOk = true;
+  const gw = s.gateway;
+  pill('pillSrv', 'on', 'Server');
+  pill('pillGw', gw.connected ? 'on' : 'off', gw.connected ? 'Gateway connected' : 'No gateway');
+  const had = nodePresent;
+  nodePresent = !!s.node_port;
+  pill('pillNode', nodePresent ? 'on' : '', nodePresent ? 'Node on USB' : 'No node on USB');
+  $('usbNone').classList.toggle('hidden', nodePresent);
+  $('usbAll').classList.toggle('hidden', !nodePresent);
+  if (nodePresent !== had && had !== null) toast(nodePresent ? 'Node connected on USB.' : 'Node unplugged from USB.', nodePresent ? 'good' : '');
+  if (nodePresent && !had && tab === 'usb') usbRefresh();
+
+  devices = s.devices;
+  $('devTable').tBodies[0].innerHTML = devices.map(d =>
+    `<tr><td><span class="tag">${esc(d.dev)}</span></td><td data-ago="${+d.last_seen || 0}">${ago(d.last_seen)}</td><td class="num">${val(d.records)}</td><td class="num">${val(d.remaining)}</td><td>${signalBars(d.rssi)}</td><td class="num">${val(d.snr)}</td></tr>`).join('');
+  $('devEmpty').classList.toggle('hidden', devices.length > 0);
+  $('devTable').classList.toggle('hidden', devices.length === 0);
+  const sel = $('loraDev'), cur = sel.value;
+  const opts = ['<option value="">All nodes</option>'].concat(devices.map(d => `<option value="${esc(d.dev)}">Node ${esc(d.dev)}</option>`)).join('');
+  if (sel.dataset.opts !== opts) { sel.innerHTML = opts; sel.dataset.opts = opts; sel.value = cur; }
+
+  $('gwKv').innerHTML = kvHtml([
+    ['Link', statusHtml(gw.connected ? 'good' : 'bad', gw.connected ? 'Connected' : 'Not connected')],
+    ['Port', esc(gw.port || '–')],
+    ['Packets received', `<span class="num">${gw.packets}</span>`],
+    ['New readings stored', `<span class="num">${gw.records_new}</span>`],
+    ['Last packet', `<span data-ago="${+gw.last_packet || 0}">${ago(gw.last_packet)}</span>`],
+  ]);
+  tilesSeen();
+}
+
+function tilesSeen() {
+  const dev = $('loraDev').value, list = dev ? devices.filter(d => String(d.dev) === dev) : devices;
+  const last = list.reduce((a, d) => !a || d.last_seen > a.last_seen ? d : a, null);
+  const v = $('tSeen').querySelector('.v');
+  if (!last) { v.textContent = '–'; v.dataset.ago = 0; $('tSeen').querySelector('.sub').textContent = 'nothing received yet'; return; }
+  v.dataset.ago = last.last_seen; v.textContent = ago(last.last_seen);
+  $('tSeen').querySelector('.sub').textContent = `node ${last.dev} · ${new Date(last.last_seen * 1000).toLocaleTimeString()}`;
+  const still = list.reduce((a, d) => a + (d.remaining || 0), 0);
+  $('tCount').querySelector('.sub').textContent = `${still} still waiting on the node${list.length > 1 ? 's' : ''}`;
+}
+
+function tileStat(id, field, colorVar) {
+  const f = FIELDS[field], vals = loraRows.map(r => r[field]).filter(x => x !== null && x !== undefined), t = $(id);
+  setNum(t.querySelector('.v'), vals.length ? vals[vals.length - 1] : null, f.dec);
+  t.querySelector('.sub').textContent = vals.length ? `min ${Math.min(...vals).toFixed(f.dec)} · max ${Math.max(...vals).toFixed(f.dec)}` : 'no data in range';
+  const step = Math.max(1, Math.ceil(vals.length / 80));
+  spark(t.querySelector('.spark'), vals.filter((_, i) => i % step === 0 || i === vals.length - 1), colorVar);
+}
+
+function loraRender() {
+  const field = fieldSeg.value, f = FIELDS[field];
+  const byDev = new Map();
+  for (const r of loraRows) { if (!byDev.has(r.dev)) byDev.set(r.dev, []); byDev.get(r.dev).push({ x: r.time, y: r[field] }); }
+  const series = [...byDev].map(([dev, pts]) => ({ name: 'Node ' + dev, color: devColor(dev), pts }));
+  loraChart.set(series, f);
+  $('loraTitle').firstChild.textContent = `${f.name} (${f.unit}) `;
+  $('loraInfo').textContent = loraRows.length ? `${fmtTime(loraRows[0].time)} to ${fmtTime(loraRows[loraRows.length - 1].time)}` : '';
+  const lg = $('loraLegend');
+  lg.classList.toggle('hidden', series.length < 2);
+  lg.textContent = '';
+  if (series.length >= 2) for (const s of series) {
+    const item = document.createElement('span'), key = document.createElement('i');
+    key.className = 'key'; key.style.background = css(s.color);
+    item.append(key, document.createTextNode(s.name)); lg.appendChild(item);
+  }
+}
+
+async function loraRefresh(userAction) {
+  const range = +rangeSeg.value, dev = $('loraDev').value;
+  const from = range ? Math.floor(Date.now() / 1000) - range : 0;
+  const q = `?from=${from}` + (dev ? `&dev=${encodeURIComponent(dev)}` : '');
+  $('loraCsv').href = '/api/export.csv' + q;
+  if (userAction) { loraChart.loading(true); seenKeys = null; }
+  let rows;
+  try { rows = await api('/api/readings' + q + '&limit=20000'); } catch (e) { loraChart.loading(false); return; }
+  loraChart.loading(false);
+  const keyOf = r => `${r.dev}/${r.seq}/${r.time}`;
+  const keys = new Set(rows.map(keyOf));
+  const fresh = seenKeys ? rows.filter(r => !seenKeys.has(keyOf(r))) : [];
+  const changed = !seenKeys || fresh.length || keys.size !== seenKeys.size;
+  seenKeys = keys;
+  loraRows = rows;
+  if (!changed) return;                         /* nothing new: leave the page as it is */
+
+  loraRender();
+  tileStat('tMoist', 'moisture_mV', '--s1'); tileStat('tTemp', 'temp_c', '--s1'); tileStat('tVdd', 'vdda_mV', '--s1');
+  const lastLora = [...rows].reverse().find(r => r.rssi !== null && r.rssi !== undefined);
+  setNum($('tSig').querySelector('.v'), lastLora ? lastLora.rssi : null, 0);
+  $('tSig').querySelector('.sub').textContent = lastLora ? `SNR ${lastLora.snr} dB · node ${lastLora.dev}` : 'no LoRa packet in range';
+  setNum($('tCount').querySelector('.v'), rows.length, 0);
+  $('tabLoraCount').textContent = rows.length;
+  tilesSeen();
+
+  const freshKeys = new Set(fresh.map(keyOf));
+  $('loraTable').tBodies[0].innerHTML = rows.slice(-30).reverse().map(r =>
+    `<tr class="${freshKeys.has(keyOf(r)) ? 'fresh' : ''}"><td>${fmtTime(r.time)}${r.time_valid ? '' : ' <span class="tag" title="The node clock was not set: the arrival time is shown">arrival time</span>'}</td><td class="num">${esc(r.dev)}</td><td class="num">${r.seq}</td><td class="num">${val(r.moisture_mV)}</td><td class="num">${val(r.temp_c)}</td><td class="num">${val(r.vdda_mV)}</td><td class="num">${val(r.rssi)}</td><td><span class="tag">${esc(r.source)}</span></td></tr>`).join('');
+  $('loraEmpty').classList.toggle('hidden', rows.length > 0);
+  $('loraTable').classList.toggle('hidden', rows.length === 0);
+  $('liveText').textContent = rows.length ? 'live · updates every 5 s' : 'waiting for data';
+  if (fresh.length) {
+    $('liveMark').classList.remove('beat'); void $('liveMark').offsetWidth; $('liveMark').classList.add('beat');
+    document.querySelectorAll('#pageLora .tile').forEach(t => { t.classList.add('pulse'); setTimeout(() => t.classList.remove('pulse'), 900); });
+  }
+}
+$('loraDev').onchange = () => loraRefresh(true);
+
+/* ago-texts count up every second without a reload */
+setInterval(() => {
+  document.querySelectorAll('[data-ago]').forEach(e => { const t = +e.dataset.ago; if (t) e.textContent = ago(t); });
+  $('clock').textContent = new Date().toLocaleTimeString();
+}, 1000);
+
+/* -------------------------------------------------------------- USB page */
+const usbChart = makeChart($('usbChart'));
+/* settings: the first three are shown, the rest sit under Advanced */
+const CFG = {
+  period_s:       { label: 'Collection period', unit: 's', main: true },
+  send_enable:    { label: 'Send data over LoRa', main: true, options: [[1, 'Yes, send to the gateway'], [0, 'No, only save on the node']] },
+  sensor_mode:    { label: 'Sensor', main: true, options: [[0, 'Moisture (analog)'], [1, 'Temperature (DS18B20)']] },
+  ack_window_ms:  { label: 'Fixed wait for a reply', unit: 'ms', hint: 'used until the node has measured the real reply time' },
+  warmup_ms:      { label: 'Sensor warm-up time', unit: 'ms' },
+  tx_dbm:         { label: 'LoRa transmit power', unit: 'dBm' },
+  recs_per_pkt:   { label: 'Readings per LoRa packet' },
+  pkts_per_cycle: { label: 'Most packets per wake-up' },
+  max_age_s:      { label: 'Do not send data older than', unit: 's', hint: '0 = no limit' },
+  device_id:      { label: 'Node ID' },
+};
+const cfgName = k => (CFG[k] || {}).label || k;
+function cfgField(f) {
+  const c = CFG[f.key] || {}, id = 'cfg_' + esc(f.key);
+  const ctl = c.options
+    ? `<select id="${id}">${c.options.map(([v, t]) => `<option value="${v}"${v === f.value ? ' selected' : ''}>${esc(t)}</option>`).join('')}</select>`
+    : `<input type="number" id="${id}" value="${f.value}" min="${f.min}" max="${f.max}"><span class="unit">${esc(c.unit || '')}</span>`;
+  const hint = c.options ? '' : `<small>${esc(c.hint ? c.hint + ' · ' : '')}${f.min} to ${f.max}</small>`;
+  return `<div class="field"><label class="name" for="${id}"><span>${esc(cfgName(f.key))}${hint}</span></label><div class="ctl">${ctl}<button class="btn small" data-key="${esc(f.key)}"><svg class="i"><use href="#i-check"/></svg>Save</button></div></div>`;
+}
+function cfgRender(list) {
+  if ($('cfgCard').contains(document.activeElement) && document.activeElement.tagName !== 'BUTTON') return;   /* do not overwrite what is being typed */
+  const order = Object.keys(CFG), pos = f => { const i = order.indexOf(f.key); return i < 0 ? 99 : i; };
+  const sorted = [...list].sort((a, b) => pos(a) - pos(b));
+  $('cfgMain').innerHTML = sorted.filter(f => (CFG[f.key] || {}).main).map(cfgField).join('');
+  $('cfgAdv').innerHTML = sorted.filter(f => !(CFG[f.key] || {}).main).map(cfgField).join('');
+}
+let nodeStatus = {}, nodeTiming = {}, usbRecs = [], usbBusy = 0;
+function kvHtml(pairs) { return pairs.map(([k, v]) => `<span>${k}</span><span>${v}</span>`).join(''); }
+const statusHtml = (kind, text) => `<span class="status ${kind}"><i class="ic" aria-hidden="true">${kind === 'good' ? '✓' : kind === 'warn' ? '!' : '✕'}</i>${esc(text)}</span>`;
+const okBad = (v, good, bad) => statusHtml(v === '1' ? 'good' : 'bad', v === '1' ? good : bad);
+
+/* run one action: the button shows it is working, the status poll waits */
+async function act(btn, fn) {
+  if (btn.disabled) return;
+  btn.disabled = true; btn.classList.add('busy'); usbBusy++;
+  try { await fn(); } catch (e) { toast('No answer from the server.', 'bad'); }
+  usbBusy--; btn.disabled = false; btn.classList.remove('busy');
+}
+
+function usbStatusRender(r) {
+  const s = nodeStatus = r.status, id = r.id;
+  $('heroName').textContent = id.board || 'Node';
+  $('heroSub').textContent = `ID ${id.id} · firmware ${id.fw} · chip ${id.uid || '–'} · up ${fmtDur(+s.uptime_s)}`;
+  $('hFlash').innerHTML = okBad(s.flash_ok, 'Working', 'Not answering');
+  $('hFlashSub').textContent = s.log_ok === '1' ? 'data log readable' : 'data log has errors';
+  $('hRadio').innerHTML = okBad(s.radio_ok, 'Working', 'Not answering');
+  $('hRadioSub').textContent = s.radio_error && s.radio_error !== '0' ? `last error code ${s.radio_error}` : 'no error reported';
+  const drift = Math.round(+s.time - Date.now() / 1000);
+  $('hClock').innerHTML = s.time_valid !== '1' ? statusHtml('bad', 'Not set') : Math.abs(drift) > 5 ? statusHtml('warn', 'Off by ' + Math.abs(drift) + ' s') : statusHtml('good', 'In step');
+  $('hClockSub').textContent = s.time_valid === '1' ? `${drift >= 0 ? '+' : ''}${drift} s against this PC` : 'press “Set time from this PC”';
+  setNum($('hUnsent'), +s.unsent, 0);
+  $('hUnsentSub').textContent = +s.unsent === 0 ? 'everything is sent' : +s.unsent === 1 ? 'newest reading, sent next cycle' : 'backlog: up to 24 go per cycle';
+  const pct = +s.used_permille / 10;
+  $('memBar').style.width = Math.max(pct, +s.records ? 0.6 : 0) + '%';
+  $('memText').textContent = `Flash used: ${pct.toFixed(1)} %  ·  ${(+s.records).toLocaleString()} of ${(+s.capacity).toLocaleString()} readings`;
+  $('statusKv').innerHTML = kvHtml([
+    ['Node time', s.time_valid === '1' ? fmtTime(+s.time) : 'not set'],
+    ['Collection period', `${esc(s.period_s)} s <span class="tag">paused on USB</span>`],
+    ['Wait for a reply', s.reply_timeout_ms === undefined ? '–' : `${esc(s.reply_timeout_ms)} ms <span class="tag">${s.reply_timeout_calc === '1' ? 'measured ' + esc(s.reply_ms) + ' ms × 2' : 'fixed value'}</span>`],
+  ]);
+}
+const fmtDur = s => s < 120 ? s + ' s' : s < 7200 ? Math.round(s / 60) + ' min' : s < 172800 ? (s / 3600).toFixed(1) + ' h' : (s / 86400).toFixed(1) + ' days';
+
+async function usbStatus() {
+  const r = await api('/api/node/status');
+  if (!r.ok) return r;
+  usbStatusRender(r);
+  return r;
+}
+async function usbRefresh() {
+  if (!nodePresent) return;
+  usbBusy++;
+  try {
+    const r = await usbStatus();
+    if (!r.ok) { toast(r.error, 'bad'); return; }
+    const c = await api('/api/node/config');
+    if (c.ok) cfgRender(c.config);
+    const t = await api('/api/node/timing');
+    if (t.ok) { nodeTiming = t.timing; powerUpdate(); }
+  } finally { usbBusy--; }
+}
+/* live status while the tab is open and nothing else is talking to the node */
+setInterval(() => { if (tab === 'usb' && nodePresent && !usbBusy && !document.hidden) { usbBusy++; usbStatus().catch(() => {}).finally(() => usbBusy--); } }, 5000);
+
+$('btnRefresh').onclick = e => act(e.currentTarget, async () => { await usbRefresh(); });
+$('cfgCard').onclick = e => {
+  const b = e.target.closest('button[data-key]');
+  if (!b) return;
+  const key = b.dataset.key;
+  act(b, async () => {
+    const r = await api('/api/node/config', { key, value: +$('cfg_' + key).value });
+    toast(r.ok ? `Saved: ${cfgName(key)}` : `Not saved: ${r.error}`, r.ok ? 'good' : 'bad');
+    await usbRefresh();
+  });
+};
+$('btnTime').onclick = e => act(e.currentTarget, async () => { const r = await api('/api/node/time', {}); toast(r.ok ? 'Node time set from this PC.' : r.error, r.ok ? 'good' : 'bad'); await usbStatus(); });
+$('btnCycle').onclick = e => act(e.currentTarget, async () => {
+  const before = +nodeStatus.cycles || 0;
+  const r = await api('/api/node/cycle', {});
+  if (!r.ok) { toast(r.error, 'bad'); return; }
+  for (let i = 0; i < 12; i++) {                 /* wait for the cycle counter to move */
+    await new Promise(res => setTimeout(res, 1000));
+    const s = await usbStatus();
+    if (s.ok && +s.status.cycles > before) {
+      toast(`Cycle done: saved ${s.status.last_saved === '1' ? 'yes' : 'no'}, packets sent ${s.status.last_sent}.`, 'good');
+      const t = await api('/api/node/timing');
+      if (t.ok) { nodeTiming = t.timing; powerUpdate(); }
+      return;
+    }
+  }
+  toast('The cycle did not finish in 12 s.', 'bad');
+});
+$('btnSensor').onclick = e => act(e.currentTarget, async () => {
+  $('sensorKv').innerHTML = '<span class="muted" style="grid-column:1/-1">Reading…</span>';
+  const r = await api('/api/node/sensor');
+  if (!r.ok) { $('sensorKv').innerHTML = `<span style="grid-column:1/-1">${statusHtml('bad', r.error)}</span>`; return; }
+  const s = r.sensor;
+  $('sensorKv').innerHTML = kvHtml([
+    ['Sensor', s.sensor_ok === '1' ? statusHtml('good', 'Works') : statusHtml('bad', 'No valid reading')],
+    ['Moisture', s.moisture_mV === '65535' ? 'not selected' : esc(s.moisture_mV) + ' mV'],
+    ['Temperature', s.temp_c100 === '32767' ? 'not selected' : (+s.temp_c100 / 100).toFixed(2) + ' °C'],
+    ['Supply', esc(s.vdda_mV) + ' mV'],
+    ['Read at', new Date().toLocaleTimeString()],
+  ]);
+});
+
+/* run-time estimate: charge per cycle / period + sleep current */
+const pwDefaults = { mcu: 2, tx: 45, rx: 8, sensor: 5, flash: 20 };
+const pwRows = [
+  ['mcu', 'MCU awake (whole cycle)', t => t.cycle_us], ['tx', 'LoRa transmitting', t => t.lora_tx_us],
+  ['rx', 'LoRa listening for replies', t => t.lora_ack_us], ['sensor', 'Sensor powered', t => Math.max(0, t.cycle_us - t.flash_save_us)],
+  ['flash', 'Flash writing', t => t.flash_save_us],
+];
+function powerUpdate() {
+  if ($('pwTable').contains(document.activeElement)) return;
+  const cur = store.get('pwCurrents', pwDefaults), t = {};
+  for (const k in nodeTiming) t[k] = +nodeTiming[k];
+  let total = 0;
+  $('pwTable').tBodies[0].innerHTML = pwRows.map(([k, label, fn]) => {
+    const ms = (fn(t) || 0) / 1000, uah = (cur[k] ?? pwDefaults[k]) * ms / 3600;
+    total += uah;
+    return `<tr><td>${label}</td><td class="num"><input type="number" step="0.1" data-pw="${k}" value="${cur[k] ?? pwDefaults[k]}"></td><td class="num">${ms.toFixed(1)}</td><td class="num">${uah.toFixed(3)}</td></tr>`;
+  }).join('');
+  const period = +nodeStatus.period_s || 60, sleep = +$('pwSleep').value || 0, cap = +$('pwCap').value || 0;
+  const avg_uA = total / (period / 3600) + sleep;
+  const fact = (v, label) => `<div class="fact"><b>${v}</b>${label}</div>`, ms = us => us >= 1e6 ? (us / 1e6).toFixed(2) + ' s' : (us / 1000).toFixed(0) + ' ms';
+  if (!t.cycle_us) { $('pwResult').innerHTML = '–<small>No cycle has run since the last restart. Press “Run one cycle”.</small>'; $('pwFacts').innerHTML = ''; return; }
+  const days = cap * 1000 / avg_uA / 24;
+  $('pwResult').innerHTML = `${days >= 60 ? (days / 30.4).toFixed(1) + ' months' : days.toFixed(1) + ' days'}<small>${cap} mAh battery, one reading every ${period} s</small>`;
+  $('pwFacts').innerHTML = fact(ms(t.cycle_us), 'awake per cycle') + fact(ms(t.lora_tx_us), 'transmitting') + fact(ms(t.lora_ack_us), 'listening for replies')
+    + fact(avg_uA < 1000 ? avg_uA.toFixed(0) + ' µA' : (avg_uA / 1000).toFixed(2) + ' mA', 'average current');
+}
+$('pwTable').onchange = e => { const k = e.target.dataset.pw; if (!k) return; const c = store.get('pwCurrents', { ...pwDefaults }); c[k] = +e.target.value; store.set('pwCurrents', c); e.target.blur(); powerUpdate(); };
+$('pwCap').value = store.get('pwCap', 2000); $('pwSleep').value = store.get('pwSleep', 10);
+$('pwCap').onchange = () => { store.set('pwCap', +$('pwCap').value); powerUpdate(); };
+$('pwSleep').onchange = () => { store.set('pwSleep', +$('pwSleep').value); powerUpdate(); };
+
+/* stored data */
+const dtSec = id => { const v = $(id).value; return v ? Math.floor(new Date(v).getTime() / 1000) : 0; };
+const dFieldSeg = seg('dField', 'moisture_mV', () => usbDraw());
+function usbDraw() { const k = dFieldSeg.value, f = FIELDS[k]; usbChart.set([{ name: f.name, color: '--s1', pts: usbRecs.map(r => ({ x: r.time, y: r[k] })) }], f); }
+$('btnData').onclick = e => act(e.currentTarget, async () => {
+  usbChart.loading(true);
+  const r = await api(`/api/node/data?from=${dtSec('dFrom')}&to=${dtSec('dTo')}&save=${$('dSave').checked ? 1 : 0}`);
+  usbChart.loading(false);
+  if (!r.ok) { toast(r.error, 'bad'); return; }
+  usbRecs = r.records;
+  const noTime = usbRecs.filter(x => !x.time_valid).length;
+  $('usbDataInfo').textContent = `${usbRecs.length} readings` + (usbRecs.length ? `, ${fmtTime(usbRecs[0].time)} to ${fmtTime(usbRecs[usbRecs.length - 1].time)}` : '')
+    + (noTime ? ` · ${noTime} taken before the clock was set (shown near 1970)` : '')
+    + (r.time_changes.length ? ` · clock changed ${r.time_changes.length} time(s)` : '');
+  toast(`${usbRecs.length} readings read from the node` + ($('dSave').checked ? `, ${r.saved_new} new in the server database.` : '.'), 'good');
+  usbDraw();
+});
+$('btnDataCsv').onclick = () => {
+  if (!usbRecs.length) { toast('Press Read first.', ''); return; }
+  const cols = ['seq', 'time', 'time_valid', 'moisture_mV', 'temp_c', 'vdda_mV', 'sent'];
+  const text = cols.join(',') + '\n' + usbRecs.map(r => cols.map(c => val(r[c]) === '–' ? '' : r[c]).join(',')).join('\n') + '\n';
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
+  a.download = 'entc-sensornode-1_data.csv';
+  a.click();
+};
+
+/* delete */
+$('btnDelBefore').onclick = e => {
+  const t = dtSec('delBefore');
+  if (!t) { toast('Choose a date first.', ''); return; }
+  if (!confirm(`Delete all readings on the node older than ${fmtTime(t)}?`)) return;
+  act(e.currentTarget, async () => {
+    const r = await api('/api/node/erase', { before: t });
+    toast(r.ok ? `${r.result.deleted} readings deleted.` : r.error, r.ok ? 'good' : 'bad');
+    await usbStatus();
+  });
+};
+$('btnDelAll').onclick = e => {
+  if (!confirm('Delete ALL readings stored on the node? This cannot be undone.')) return;
+  act(e.currentTarget, async () => {
+    toast('Erasing… this takes up to 15 seconds.', '');
+    const r = await api('/api/node/erase', { all: true });
+    toast(r.ok ? 'All readings on the node deleted.' : r.error, r.ok ? 'good' : 'bad');
+    await usbStatus();
+  });
+};
+
+/* firmware */
+$('btnFw').onclick = e => {
+  const f = $('fwFile').files[0];
+  if (!f) { toast('Choose a .bin file first.', ''); return; }
+  if (!confirm(`Write ${f.name} (${f.size} bytes) to the node?`)) return;
+  act(e.currentTarget, async () => {
+    $('fwLog').textContent = 'Updating… do not unplug.';
+    const r = await api('/api/node/flash', f);
+    $('fwLog').textContent = (r.ok ? 'UPDATE DONE\n' : 'UPDATE FAILED\n') + (r.log || [r.error]).join('\n');
+    toast(r.ok ? 'Firmware update done.' : 'Firmware update failed.', r.ok ? 'good' : 'bad');
+  });
+};
+
+/* ------------------------------------------------------------------ start */
+function redrawAll() {
+  loraChart.redraw(); usbChart.redraw();
+  if (loraRows.length) { tileStat('tMoist', 'moisture_mV', '--s1'); tileStat('tTemp', 'temp_c', '--s1'); tileStat('tVdd', 'vdda_mV', '--s1'); loraRender(); }
+}
+nodePresent = null;                                  /* no "connected" toast for the first poll */
+pollGateway().then(() => { nodePresent = !!nodePresent; loraRefresh(true); if (location.hash === '#usb') showTab('usb'); });
+setInterval(pollGateway, 3000);
+setInterval(() => { if (tab === 'lora' && !document.hidden) loraRefresh(); }, 5000);
+let resizeT;
+window.addEventListener('resize', () => { clearTimeout(resizeT); resizeT = setTimeout(redrawAll, 120); });
+</script>
+</body>
+</html>
