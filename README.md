@@ -2,6 +2,12 @@
 
 Everything for the custom STM32L432KCU6 board (`entc-sensornode-1`) lives here.
 
+| PCB (3D view) | Assembled board with antenna |
+|---|---|
+| ![PCB 3D view](hardware/board_render.png) | ![Assembled board](hardware/board_photo.png) |
+
+Schematic and PCB layout: [`hardware/entc-sensornode-1_schematic.pdf`](hardware/entc-sensornode-1_schematic.pdf) (MCU, LoRa module, flash, power, board layout).
+
 ```
 node (this board) --LoRa 866 MHz--> gateway (XIAO ESP32S3) --USB--> laptop server (main store)
 node (this board) --USB---------------------------------------------> laptop server
@@ -9,7 +15,8 @@ node (this board) --USB---------------------------------------------> laptop ser
 
 | Folder | What |
 |---|---|
-| `datasheets/` | MCU, flash, SX1262, Wio module, board schematic |
+| `hardware/` | Board schematic and layout (PDF), PCB 3D view, photo of the assembled board |
+| `datasheets/` | MCU, flash, SX1262, Wio module (vendor PDFs, not in the repo) |
 | `firmware_flow/` | `embedded_device_plan.md` (handwritten plan), `firmware_workflow_plan.md` (design and phases) |
 | `board_notes/` | Bring-up history, pin map, LoRa test setup |
 | `code/` | Node firmware (STM32CubeMX layout: `Core`, `Drivers`, `Middlewares`, `App`) |
